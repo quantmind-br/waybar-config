@@ -85,7 +85,12 @@ pub fn add_config_comments(json_str: &str) -> String {
 mod tests {
     use super::*;
     use std::fs;
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
+
+    // ========================================
+    // Backup Tests
+    // ========================================
 
     #[test]
     fn test_create_backup() {
@@ -99,6 +104,75 @@ mod tests {
         let backup_content = fs::read_to_string(backup_path).unwrap();
         assert_eq!(backup_content, "original content");
     }
+
+    #[test]
+    fn test_create_backup_nonexistent_file() {
+        let result = create_backup("/nonexistent/path/file.json");
+        assert!(result.is_err());
+        if let Err(AppError::NotFound(msg)) = result {
+            assert!(msg.contains("File not found"));
+        } else {
+            panic!("Expected NotFound error");
+        }
+    }
+
+    #[test]
+    fn test_create_backup_preserves_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("large.json");
+
+        // Write a large file
+        let content = "x".repeat(10000);
+        fs::write(&file_path, &content).unwrap();
+
+        let backup_path = create_backup(file_path.to_str().unwrap()).unwrap();
+        let backup_content = fs::read_to_string(backup_path).unwrap();
+
+        assert_eq!(content, backup_content);
+        assert_eq!(backup_content.len(), 10000);
+    }
+
+    #[test]
+    fn test_create_backup_with_unicode_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("unicode.json");
+        let content = r#"{"message": "Hello 世界 🌍", "emoji": "🚀"}"#;
+        fs::write(&file_path, content).unwrap();
+
+        let backup_path = create_backup(file_path.to_str().unwrap()).unwrap();
+        let backup_content = fs::read_to_string(backup_path).unwrap();
+
+        assert_eq!(content, backup_content);
+        assert!(backup_content.contains("世界"));
+        assert!(backup_content.contains("🚀"));
+    }
+
+    #[test]
+    fn test_create_multiple_backups() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.json");
+
+        // Create original file
+        fs::write(&file_path, "content 1").unwrap();
+
+        // Create first backup
+        let backup1 = create_backup(file_path.to_str().unwrap()).unwrap();
+
+        // Modify file
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::write(&file_path, "content 2").unwrap();
+
+        // Create second backup (should have different timestamp)
+        let backup2 = create_backup(file_path.to_str().unwrap()).unwrap();
+
+        assert_ne!(backup1, backup2);
+        assert!(backup1.exists());
+        assert!(backup2.exists());
+    }
+
+    // ========================================
+    // Write Config File Tests
+    // ========================================
 
     #[test]
     fn test_write_config_file() {
@@ -124,6 +198,69 @@ mod tests {
     }
 
     #[test]
+    fn test_write_config_file_creates_parent_dirs() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("nested").join("dir").join("config.json");
+
+        write_config_file(file_path.to_str().unwrap(), "content").unwrap();
+
+        assert!(file_path.exists());
+        assert_eq!(fs::read_to_string(&file_path).unwrap(), "content");
+    }
+
+    #[test]
+    fn test_write_config_file_to_readonly_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir_path = temp_dir.path().join("readonly");
+        fs::create_dir(&dir_path).unwrap();
+
+        // Make directory read-only
+        let mut perms = fs::metadata(&dir_path).unwrap().permissions();
+        perms.set_mode(0o444); // Read-only
+        fs::set_permissions(&dir_path, perms).unwrap();
+
+        let file_path = dir_path.join("config.json");
+        let result = write_config_file(file_path.to_str().unwrap(), "content");
+
+        // Should fail due to permissions
+        assert!(result.is_err());
+
+        // Cleanup: restore permissions
+        let mut perms = fs::metadata(&dir_path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&dir_path, perms).unwrap();
+    }
+
+    #[test]
+    fn test_write_empty_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("empty.json");
+
+        write_config_file(file_path.to_str().unwrap(), "").unwrap();
+
+        assert!(file_path.exists());
+        assert_eq!(fs::read_to_string(&file_path).unwrap(), "");
+    }
+
+    #[test]
+    fn test_write_large_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("large.json");
+
+        // Generate large JSON content (100KB)
+        let content = format!(r#"{{"data": "{}"}}"#, "x".repeat(100000));
+
+        write_config_file(file_path.to_str().unwrap(), &content).unwrap();
+
+        let written = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(written.len(), content.len());
+    }
+
+    // ========================================
+    // JSON Formatting Tests
+    // ========================================
+
+    #[test]
     fn test_format_json() {
         let value = serde_json::json!({
             "key": "value",
@@ -135,5 +272,152 @@ mod tests {
         let formatted = format_json(&value).unwrap();
         assert!(formatted.contains("  "));
         assert!(formatted.contains("\"key\": \"value\""));
+    }
+
+    #[test]
+    fn test_format_json_complex() {
+        let value = serde_json::json!({
+            "layer": "top",
+            "position": "top",
+            "modules-left": ["clock", "battery"],
+            "modules-center": ["workspaces"],
+            "clock": {
+                "format": "{:%H:%M}",
+                "tooltip": true,
+                "states": {
+                    "warning": 30
+                }
+            }
+        });
+
+        let formatted = format_json(&value).unwrap();
+
+        // Check proper indentation (2 spaces)
+        assert!(formatted.contains("  \"layer\": \"top\""));
+        assert!(formatted.contains("    \"format\":"));
+        assert!(formatted.contains("      \"warning\":"));
+    }
+
+    #[test]
+    fn test_format_json_array() {
+        let value = serde_json::json!([1, 2, 3, 4, 5]);
+        let formatted = format_json(&value).unwrap();
+
+        assert!(formatted.contains("[\n"));
+        assert!(formatted.contains("\n]"));
+    }
+
+    #[test]
+    fn test_format_json_preserves_types() {
+        let value = serde_json::json!({
+            "string": "text",
+            "number": 42,
+            "float": 3.14,
+            "boolean": true,
+            "null": null,
+            "array": [1, 2],
+            "object": {"key": "value"}
+        });
+
+        let formatted = format_json(&value).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&formatted).unwrap();
+
+        assert_eq!(parsed["string"], "text");
+        assert_eq!(parsed["number"], 42);
+        assert_eq!(parsed["float"], 3.14);
+        assert_eq!(parsed["boolean"], true);
+        assert!(parsed["null"].is_null());
+        assert!(parsed["array"].is_array());
+        assert!(parsed["object"].is_object());
+    }
+
+    // ========================================
+    // Comment Addition Tests
+    // ========================================
+
+    #[test]
+    fn test_add_config_comments() {
+        let json = r#"{"key": "value"}"#;
+        let with_comments = add_config_comments(json);
+
+        assert!(with_comments.contains("Waybar Configuration"));
+        assert!(with_comments.contains("Generated by"));
+        assert!(with_comments.contains(r#"{"key": "value"}"#));
+    }
+
+    #[test]
+    fn test_add_config_comments_multiline() {
+        let json = r#"{
+  "key1": "value1",
+  "key2": "value2"
+}"#;
+        let with_comments = add_config_comments(json);
+
+        // Should preserve formatting
+        assert!(with_comments.contains("\"key1\":"));
+        assert!(with_comments.contains("\"key2\":"));
+
+        // Should have header before content
+        let header_end = with_comments.find("{").unwrap();
+        let header = &with_comments[..header_end];
+        assert!(header.contains("//"));
+    }
+
+    // ========================================
+    // Error Handling Tests
+    // ========================================
+
+    #[test]
+    fn test_backup_invalid_path() {
+        let result = create_backup("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_invalid_path() {
+        let result = write_config_file("/invalid\0path", "content");
+        assert!(result.is_err());
+    }
+
+    // ========================================
+    // Integration Tests
+    // ========================================
+
+    #[test]
+    fn test_full_workflow() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("config.json");
+
+        // 1. Create initial config
+        let initial_content = serde_json::json!({
+            "modules-left": ["clock"]
+        });
+        let formatted = format_json(&initial_content).unwrap();
+        let with_comments = add_config_comments(&formatted);
+        write_config_file(file_path.to_str().unwrap(), &with_comments).unwrap();
+
+        // 2. Update config (should create backup)
+        let updated_content = serde_json::json!({
+            "modules-left": ["clock", "battery"]
+        });
+        let formatted = format_json(&updated_content).unwrap();
+        let with_comments = add_config_comments(&formatted);
+        write_config_file(file_path.to_str().unwrap(), &with_comments).unwrap();
+
+        // 3. Verify backup exists with original content
+        let backups: Vec<_> = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name().to_str().unwrap().contains("backup"))
+            .collect();
+
+        assert_eq!(backups.len(), 1);
+        let backup_content = fs::read_to_string(backups[0].path()).unwrap();
+        assert!(backup_content.contains(r#""modules-left": ["clock"]"#));
+        assert!(!backup_content.contains("battery"));
+
+        // 4. Verify current file has updated content
+        let current_content = fs::read_to_string(&file_path).unwrap();
+        assert!(current_content.contains("battery"));
     }
 }

@@ -145,6 +145,40 @@ export const PulseaudioModuleSchema = CommonModuleConfigSchema.extend({
 })
 
 /**
+ * Generic Workspaces module schema (Sway/i3/etc)
+ */
+export const WorkspacesModuleSchema = CommonModuleConfigSchema.extend({
+  'all-outputs': z.boolean().default(false),
+  'active-only': z.boolean().default(false),
+  'disable-scroll': z.boolean().default(false),
+  'disable-click': z.boolean().default(false),
+  'disable-markup': z.boolean().default(false),
+  'current-only': z.boolean().default(false),
+  'persistent-workspaces': z.record(z.string(), z.array(z.string())).optional(),
+  'sort-by-number': z.boolean().default(false),
+  'sort-by-name': z.boolean().default(false),
+  'sort-by-coordinates': z.boolean().default(false),
+  'numeric-first': z.boolean().default(false),
+  'enable-bar-scroll': z.boolean().default(false),
+  'reverse-scrolling': z.boolean().default(false),
+  'wrap-scroll': z.boolean().default(false),
+})
+
+/**
+ * Window module schema (Sway/i3/etc)
+ */
+export const WindowModuleSchema = CommonModuleConfigSchema.extend({
+  'max-length': z.number().int().positive().optional(),
+  separator: z.string().default(' - '),
+  rewrite: z.record(z.string(), z.string()).optional(),
+  icon: z.boolean().default(false),
+  'icon-size': z.number().int().positive().default(16),
+  'all-outputs': z.boolean().default(false),
+  'offscreen-css': z.boolean().default(false),
+  'offscreen-css-text': z.string().optional(),
+})
+
+/**
  * Hyprland Workspaces module schema
  */
 export const HyprlandWorkspacesModuleSchema = CommonModuleConfigSchema.extend({
@@ -206,9 +240,9 @@ export const ModuleSchemas: Record<ModuleType, z.ZodSchema> = {
   'keyboard-state': CommonModuleConfigSchema,
 
   // Window Manager - Generic
-  workspaces: CommonModuleConfigSchema,
+  workspaces: WorkspacesModuleSchema,
   taskbar: CommonModuleConfigSchema,
-  window: CommonModuleConfigSchema,
+  window: WindowModuleSchema,
   mode: CommonModuleConfigSchema,
   language: CommonModuleConfigSchema,
 

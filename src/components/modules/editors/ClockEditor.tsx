@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { ModuleConfig } from '../../../lib/types/config'
 import { Input } from '../../common/Input'
 import { Select } from '../../common/Select'

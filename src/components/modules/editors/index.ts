@@ -15,3 +15,15 @@ export type { NetworkEditorProps } from './NetworkEditor'
 
 export { CustomEditor } from './CustomEditor'
 export type { CustomEditorProps } from './CustomEditor'
+
+export { WorkspacesEditor } from './WorkspacesEditor'
+export type { WorkspacesEditorProps } from './WorkspacesEditor'
+
+export { WindowEditor } from './WindowEditor'
+export type { WindowEditorProps } from './WindowEditor'
+
+export { PulseaudioEditor } from './PulseaudioEditor'
+export type { PulseaudioEditorProps } from './PulseaudioEditor'
+
+export { TrayEditor } from './TrayEditor'
+export type { TrayEditorProps } from './TrayEditor'

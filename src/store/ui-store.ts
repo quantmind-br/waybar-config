@@ -3,7 +3,8 @@
 // ============================================================================
 
 import { create } from 'zustand'
-import { devtools } from 'zustand/middleware'
+import { devtools, persist } from 'zustand/middleware'
+import type { Notification } from '../components/common/Notification'
 
 // ============================================================================
 // STATE INTERFACES
@@ -20,11 +21,17 @@ interface UIState {
   // Theme
   theme: 'light' | 'dark' | 'system'
 
+  // Main app tab (Bars vs Styles)
+  activeMainTab: 'bars' | 'styles'
+
   // Active tab in bar editor
   activeEditorTab: 'general' | 'modules' | 'styling'
 
   // Active tab in style editor
   activeStyleTab: 'visual' | 'code' | 'preview'
+
+  // Notifications
+  notifications: Notification[]
 }
 
 interface UIActions {
@@ -41,8 +48,14 @@ interface UIActions {
   setTheme: (theme: 'light' | 'dark' | 'system') => void
 
   // Tabs
+  setActiveMainTab: (tab: 'bars' | 'styles') => void
   setActiveEditorTab: (tab: 'general' | 'modules' | 'styling') => void
   setActiveStyleTab: (tab: 'visual' | 'code' | 'preview') => void
+
+  // Notifications
+  showNotification: (notification: Omit<Notification, 'id'>) => void
+  removeNotification: (id: string) => void
+  clearNotifications: () => void
 }
 
 type UIStore = UIState & UIActions
@@ -53,7 +66,8 @@ type UIStore = UIState & UIActions
 
 export const useUIStore = create<UIStore>()(
   devtools(
-    (set) => ({
+    persist(
+      (set) => ({
       // ============================================================================
       // INITIAL STATE
       // ============================================================================
@@ -61,8 +75,10 @@ export const useUIStore = create<UIStore>()(
       isModuleEditorOpen: false,
       isSidebarCollapsed: false,
       theme: 'dark',
+      activeMainTab: 'bars',
       activeEditorTab: 'general',
       activeStyleTab: 'visual',
+      notifications: [],
 
       // ============================================================================
       // MODULE EDITOR ACTIONS
@@ -104,10 +120,42 @@ export const useUIStore = create<UIStore>()(
       // TAB ACTIONS
       // ============================================================================
 
+      setActiveMainTab: (tab) => set({ activeMainTab: tab }),
+
       setActiveEditorTab: (tab) => set({ activeEditorTab: tab }),
 
       setActiveStyleTab: (tab) => set({ activeStyleTab: tab }),
-    }),
+
+      // ============================================================================
+      // NOTIFICATION ACTIONS
+      // ============================================================================
+
+      showNotification: (notification) =>
+        set((state) => ({
+          notifications: [
+            ...state.notifications,
+            {
+              ...notification,
+              id: crypto.randomUUID(),
+            },
+          ],
+        })),
+
+      removeNotification: (id) =>
+        set((state) => ({
+          notifications: state.notifications.filter((n) => n.id !== id),
+        })),
+
+      clearNotifications: () => set({ notifications: [] }),
+      }),
+      {
+        name: 'waybar-ui-storage',
+        partialize: (state) => ({
+          theme: state.theme,
+          isSidebarCollapsed: state.isSidebarCollapsed,
+        }),
+      }
+    ),
     { name: 'UIStore' }
   )
 )

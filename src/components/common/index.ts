@@ -22,3 +22,6 @@ export type { FormatBuilderProps } from './FormatBuilder'
 
 export { IconPicker } from './IconPicker'
 export type { IconPickerProps } from './IconPicker'
+
+export { NotificationContainer } from './Notification'
+export type { Notification, NotificationType } from './Notification'

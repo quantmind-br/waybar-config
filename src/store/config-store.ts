@@ -12,6 +12,10 @@ import type {
   ModuleInstance,
   StyleDefinition,
 } from '../lib/types/config'
+import { waybarConfigToJSON } from '../lib/utils/config-transform'
+import { validateFullConfig } from '../lib/utils/validation'
+import { saveConfig as tauriSaveConfig, reloadWaybar } from '../lib/tauri/commands'
+import { useUIStore } from './ui-store'
 
 // ============================================================================
 // STATE INTERFACES
@@ -20,6 +24,7 @@ import type {
 interface ConfigState {
   config: WaybarConfig
   currentBarId: string | null
+  configPath: string | null
   isDirty: boolean
   lastSaved: Date | null
 }
@@ -45,7 +50,7 @@ interface ConfigActions {
   deleteStyle: (id: string) => void
 
   // File operations
-  loadConfig: (config: WaybarConfig) => void
+  loadConfig: (config: WaybarConfig, configPath: string) => void
   saveConfig: () => Promise<void>
   resetConfig: () => void
 
@@ -79,6 +84,7 @@ export const useConfigStore = create<ConfigStore>()(
             },
           },
           currentBarId: null,
+          configPath: null,
           isDirty: false,
           lastSaved: null,
 
@@ -239,23 +245,111 @@ export const useConfigStore = create<ConfigStore>()(
           // FILE OPERATIONS
           // ============================================================================
 
-          loadConfig: (config) =>
+          loadConfig: (config, configPath) =>
             set({
               config,
+              configPath,
               currentBarId: config.bars[0]?.id || null,
               isDirty: false,
               lastSaved: new Date(),
             }),
 
           saveConfig: async () => {
-            // TODO: Implement actual save using Tauri commands
-            // const state = get()
-            // await invoke('save_config', { config: state.config })
-            // For now, just mark as saved
-            set({
-              isDirty: false,
-              lastSaved: new Date(),
+            // Get current state using set callback
+            let currentConfig: WaybarConfig | null = null
+            let currentPath: string | null = null
+
+            set((state) => {
+              currentConfig = state.config
+              currentPath = state.configPath
+              // No state changes here, just reading
+              return state
             })
+
+            if (!currentConfig || !currentPath) {
+              console.error('[Config Store] Cannot save: config or path is missing')
+              useUIStore.getState().showNotification({
+                type: 'error',
+                title: 'Save Failed',
+                message: 'No configuration loaded. Please load a configuration first.',
+              })
+              throw new Error('No configuration or path available to save')
+            }
+
+            try {
+              // Step 1: Validate configuration
+              console.log('[Config Store] Validating configuration...')
+              const validationResult = validateFullConfig(currentConfig)
+
+              if (!validationResult.success) {
+                const errorCount = Object.keys(validationResult.errors).length
+                console.error('[Config Store] Validation failed:', validationResult.errors)
+
+                // Show detailed error notification
+                const firstError = Object.values(validationResult.errors)[0]?.[0] || 'Unknown error'
+                useUIStore.getState().showNotification({
+                  type: 'error',
+                  title: 'Cannot Save Configuration',
+                  message: `Found ${errorCount} validation error(s). First error: ${firstError}`,
+                  duration: 8000,
+                })
+                throw new Error(`Configuration has ${errorCount} validation error(s)`)
+              }
+
+              // Step 2: Transform internal config to Waybar JSON
+              const waybarJSON = waybarConfigToJSON(currentConfig)
+              const jsonString = JSON.stringify(waybarJSON, null, 2)
+
+              // Step 3: Save to file using Tauri command (creates backup automatically)
+              console.log('[Config Store] Saving config to:', currentPath)
+              await tauriSaveConfig(currentPath, jsonString)
+
+              // Step 4: Mark as saved
+              set({
+                isDirty: false,
+                lastSaved: new Date(),
+              })
+
+              console.log('[Config Store] Configuration saved successfully')
+
+              // Step 5: Reload Waybar
+              try {
+                console.log('[Config Store] Reloading Waybar...')
+                await reloadWaybar()
+                console.log('[Config Store] Waybar reloaded successfully')
+
+                // Show success notification
+                useUIStore.getState().showNotification({
+                  type: 'success',
+                  title: 'Configuration Saved',
+                  message: 'Configuration saved and Waybar reloaded successfully.',
+                })
+              } catch (reloadError) {
+                console.warn('[Config Store] Failed to reload Waybar:', reloadError)
+
+                // Show partial success notification
+                useUIStore.getState().showNotification({
+                  type: 'warning',
+                  title: 'Saved (Reload Failed)',
+                  message: 'Configuration saved, but failed to reload Waybar. You may need to reload manually.',
+                  duration: 7000,
+                })
+              }
+            } catch (error) {
+              console.error('[Config Store] Failed to save configuration:', error)
+
+              // Only show error notification if we haven't already shown one
+              if (error instanceof Error && !error.message.includes('validation error')) {
+                useUIStore.getState().showNotification({
+                  type: 'error',
+                  title: 'Save Failed',
+                  message: error.message || 'An unexpected error occurred while saving.',
+                  duration: 7000,
+                })
+              }
+
+              throw error
+            }
           },
 
           resetConfig: () =>

@@ -155,20 +155,25 @@ export const useValidationStore = create<ValidationStore>()(
         set({ isValidating: true })
 
         try {
-          // TODO: Implement actual validation using Zod schemas
-          // This is a placeholder that will be implemented in Phase 10
+          // Import dynamically to avoid circular dependencies
+          const { useConfigStore } = await import('./config-store')
+          const { validateFullConfig } = await import('../lib/utils/validation')
 
-          // Simulate validation delay
-          await new Promise((resolve) => setTimeout(resolve, 100))
+          // Get current config
+          const config = useConfigStore.getState().config
 
-          // For now, mark as valid
+          // Run validation
+          const result = validateFullConfig(config)
+
+          // Update validation state
           set({
-            errors: {},
-            warnings: {},
-            isValid: true,
+            errors: result.errors,
+            warnings: {}, // TODO: Implement warnings for non-critical issues
+            isValid: result.success,
             isValidating: false,
           })
         } catch (error) {
+          console.error('Validation error:', error)
           set({
             isValidating: false,
             isValid: false,

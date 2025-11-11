@@ -192,3 +192,147 @@ export function getTauriErrorMessage(error: unknown): string {
   }
   return 'Unknown error'
 }
+
+// ============================================================================
+// WAYBAR PROCESS COMMANDS
+// ============================================================================
+
+/**
+ * Reload Waybar configuration
+ * Sends SIGUSR2 signal to Waybar process
+ *
+ * @throws TauriError if reload fails
+ */
+export async function reloadWaybar(): Promise<void> {
+  try {
+    await invoke<void>('reload_waybar')
+  } catch (error) {
+    throw new Error(`Failed to reload Waybar: ${error}`)
+  }
+}
+
+/**
+ * Check if Waybar is currently running
+ *
+ * @returns true if Waybar is running, false otherwise
+ * @throws TauriError if check fails
+ */
+export async function isWaybarRunning(): Promise<boolean> {
+  try {
+    return await invoke<boolean>('is_waybar_running')
+  } catch (error) {
+    throw new Error(`Failed to check Waybar status: ${error}`)
+  }
+}
+
+/**
+ * Get Waybar process ID(s)
+ *
+ * @returns Array of process IDs (empty if not running)
+ * @throws TauriError if command fails
+ */
+export async function getWaybarPids(): Promise<number[]> {
+  try {
+    return await invoke<number[]>('get_waybar_pids')
+  } catch (error) {
+    throw new Error(`Failed to get Waybar PIDs: ${error}`)
+  }
+}
+
+/**
+ * Start Waybar process
+ * Does nothing if already running
+ *
+ * @throws TauriError if start fails
+ */
+export async function startWaybar(): Promise<void> {
+  try {
+    await invoke<void>('start_waybar')
+  } catch (error) {
+    throw new Error(`Failed to start Waybar: ${error}`)
+  }
+}
+
+/**
+ * Stop Waybar process
+ * Does nothing if not running
+ *
+ * @throws TauriError if stop fails
+ */
+export async function stopWaybar(): Promise<void> {
+  try {
+    await invoke<void>('stop_waybar')
+  } catch (error) {
+    throw new Error(`Failed to stop Waybar: ${error}`)
+  }
+}
+
+/**
+ * Restart Waybar process
+ * Stops and starts Waybar with a brief delay
+ *
+ * @throws TauriError if restart fails
+ */
+export async function restartWaybar(): Promise<void> {
+  try {
+    await invoke<void>('restart_waybar')
+  } catch (error) {
+    throw new Error(`Failed to restart Waybar: ${error}`)
+  }
+}
+
+// ============================================================================
+// COMPOSITOR DETECTION COMMANDS
+// ============================================================================
+
+/**
+ * Compositor information
+ */
+export interface CompositorInfo {
+  name: string
+  version?: string
+  session_type: string
+}
+
+/**
+ * Detect currently running Wayland compositor
+ *
+ * @returns Compositor name (lowercase) or "unknown"
+ * @throws TauriError if detection fails
+ */
+export async function detectCompositor(): Promise<string> {
+  try {
+    return await invoke<string>('detect_compositor')
+  } catch (error) {
+    throw new Error(`Failed to detect compositor: ${error}`)
+  }
+}
+
+/**
+ * Get detailed compositor information
+ *
+ * @returns Compositor info including name, version, and session type
+ * @throws TauriError if command fails
+ */
+export async function getCompositorInfo(): Promise<CompositorInfo> {
+  try {
+    return await invoke<CompositorInfo>('get_compositor_info')
+  } catch (error) {
+    throw new Error(`Failed to get compositor info: ${error}`)
+  }
+}
+
+/**
+ * Check if a specific compositor is running
+ *
+ * @param compositorName - Name of compositor to check (e.g. "hyprland", "sway")
+ * @returns true if the specified compositor is running
+ * @throws TauriError if check fails
+ */
+export async function isCompositorRunning(compositorName: string): Promise<boolean> {
+  try {
+    return await invoke<boolean>('is_compositor_running', { compositorName })
+  } catch (error) {
+    throw new Error(`Failed to check compositor: ${error}`)
+  }
+}
